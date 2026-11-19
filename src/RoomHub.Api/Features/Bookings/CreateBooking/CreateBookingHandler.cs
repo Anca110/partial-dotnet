@@ -30,6 +30,12 @@ public sealed class CreateBookingHandler(
 
         var roomBookings = await bookings.GetActiveForRoomAsync(room.Id, ct);
 
+        // R9: how many active bookings this participant already has on the UTC day of startUtc.
+        var sameDayCount = string.IsNullOrWhiteSpace(command.BookedBy)
+            ? 0
+            : await bookings.CountActiveForPersonOnDayAsync(
+                command.BookedBy.Trim(), Booking.ToUtc(command.StartUtc), ct);
+
         var created = Booking.Create(
             room,
             command.BookedBy,
@@ -37,7 +43,8 @@ public sealed class CreateBookingHandler(
             command.EndUtc,
             command.Attendees,
             timeProvider.GetUtcNow().UtcDateTime,
-            roomBookings);
+            roomBookings,
+            sameDayCount);
 
         if (created.IsFailure)
             return created.Error;

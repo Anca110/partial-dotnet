@@ -15,4 +15,16 @@ public sealed class EfBookingRepository(RoomHubDbContext db) : IBookingRepositor
         await db.Bookings
             .Where(b => b.RoomId == roomId && b.Status == BookingStatus.Active)
             .ToListAsync(ct);
+
+    public Task<int> CountActiveForPersonOnDayAsync(string bookedBy, DateTime dayUtc, CancellationToken ct)
+    {
+        var dayStart = dayUtc.Date;
+        var dayEnd = dayStart.AddDays(1);
+
+        return db.Bookings.CountAsync(b =>
+            b.BookedBy == bookedBy &&
+            b.Status == BookingStatus.Active &&
+            b.StartUtc >= dayStart &&
+            b.StartUtc < dayEnd, ct);
+    }
 }

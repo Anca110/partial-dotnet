@@ -12,6 +12,10 @@ public enum BookingStatus
 public sealed class Booking
 {
     public static readonly TimeSpan MaxDuration = TimeSpan.FromHours(4);
+    public static readonly TimeSpan MaxDurationLargeRoom = TimeSpan.FromHours(2);
+    public const int LargeRoomCapacity = 10;
+    public const int MaxActiveBookingsPerDay = 2;
+    public static readonly TimeSpan MinCancelNotice = TimeSpan.FromMinutes(60);
 
     public Guid Id { get; private set; }
     public Guid RoomId { get; private set; }
@@ -31,7 +35,8 @@ public sealed class Booking
         DateTime endUtc,
         int attendees,
         DateTime nowUtc,
-        IEnumerable<Booking> roomBookings)
+        IEnumerable<Booking> roomBookings,
+        int activeBookingsSameDayForPerson)
     {
         startUtc = ToUtc(startUtc);
         endUtc = ToUtc(endUtc);
@@ -54,8 +59,16 @@ public sealed class Booking
         if (endUtc - startUtc > MaxDuration)
             return Error.Validation("Booking.TooLong", "A booking can last at most 4 hours.");
 
+        // R10: rooms with capacity greater than 10 can be booked for at most 2 hours.
+        if (room.Capacity > LargeRoomCapacity && endUtc - startUtc > MaxDurationLargeRoom)
+            return Error.Validation("Booking.TooLongForLargeRoom", "Rooms with more than 10 seats can be booked for at most 2 hours.");
+
         if (roomBookings.Any(b => b.Overlaps(startUtc, endUtc)))
             return Error.Conflict("Booking.RoomOccupied", "The room is occupied in this interval.");
+
+        // R9: at most 2 active bookings per participant per UTC day, across all rooms.
+        if (activeBookingsSameDayForPerson >= MaxActiveBookingsPerDay)
+            return Error.Conflict("Booking.DailyLimitReached", "A participant can have at most 2 active bookings per day.");
 
         return new Booking
         {
@@ -75,16 +88,20 @@ public sealed class Booking
         Status == BookingStatus.Active && StartUtc < endUtc && startUtc < EndUtc;
 
     // R8: Active -> Cancelled. Cancelling twice is a conflict.
-    public Result<Booking> Cancel()
+    // R11: only if the booking starts at least 60 minutes from now.
+    public Result<Booking> Cancel(DateTime nowUtc)
     {
         if (Status == BookingStatus.Cancelled)
             return Error.Conflict("Booking.AlreadyCancelled", "The booking is already cancelled.");
+
+        if (StartUtc - nowUtc < MinCancelNotice)
+            return Error.Conflict("Booking.TooLateToCancel", "A booking can be cancelled only at least 60 minutes before it starts.");
 
         Status = BookingStatus.Cancelled;
         return this;
     }
 
-    private static DateTime ToUtc(DateTime value) => value.Kind switch
+    public static DateTime ToUtc(DateTime value) => value.Kind switch
     {
         DateTimeKind.Utc => value,
         DateTimeKind.Local => value.ToUniversalTime(),
