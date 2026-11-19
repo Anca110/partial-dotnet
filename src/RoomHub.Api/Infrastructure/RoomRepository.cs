@@ -1,8 +1,8 @@
-using RoomHub.Api.Models;
+using RoomHub.Api.Domain.Rooms;
 
-namespace RoomHub.Api.Repositories;
+namespace RoomHub.Api.Infrastructure;
 
-// Starter: in-memory data. It is lost when the application restarts.
+// In-memory for now, replaced by EF Core later.
 public class RoomRepository
 {
     private readonly List<Room> _rooms = new();

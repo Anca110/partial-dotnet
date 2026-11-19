@@ -1,6 +1,6 @@
-namespace RoomHub.Api.Services;
+namespace RoomHub.Api.Common;
 
-// Starter: business errors are exceptions, caught by a middleware.
+// Business errors are still exceptions at this step, caught by ExceptionMiddleware.
 public sealed class BusinessException(string code, string message, int statusCode)
     : Exception(message)
 {
