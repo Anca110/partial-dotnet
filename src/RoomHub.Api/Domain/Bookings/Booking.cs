@@ -69,12 +69,17 @@ public sealed class Booking
         };
     }
 
-    // Overlap check moved from the starter's BookingService as it was.
+    // R7: only active bookings block the room. Strict "<": intervals that only touch
+    // (one ends exactly when the other starts) do not overlap.
     public bool Overlaps(DateTime startUtc, DateTime endUtc) =>
-        StartUtc <= endUtc && startUtc <= EndUtc;
+        Status == BookingStatus.Active && StartUtc < endUtc && startUtc < EndUtc;
 
+    // R8: Active -> Cancelled. Cancelling twice is a conflict.
     public Result<Booking> Cancel()
     {
+        if (Status == BookingStatus.Cancelled)
+            return Error.Conflict("Booking.AlreadyCancelled", "The booking is already cancelled.");
+
         Status = BookingStatus.Cancelled;
         return this;
     }

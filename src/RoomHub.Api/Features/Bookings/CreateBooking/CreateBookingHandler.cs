@@ -1,7 +1,7 @@
 using RoomHub.Api.Common;
 using RoomHub.Api.Domain.Bookings;
 using RoomHub.Api.Domain.Common;
-using RoomHub.Api.Infrastructure;
+using RoomHub.Api.Domain.Rooms;
 
 namespace RoomHub.Api.Features.Bookings.CreateBooking;
 
@@ -15,18 +15,20 @@ public sealed record CreateBookingCommand(
 public sealed record CreateBookingResponse(Guid Id, Guid RoomId, string Status);
 
 public sealed class CreateBookingHandler(
-    RoomRepository rooms,
-    BookingRepository bookings,
+    IRoomRepository rooms,
+    IBookingRepository bookings,
+    IUnitOfWork unitOfWork,
     TimeProvider timeProvider)
     : ICommandHandler<CreateBookingCommand, CreateBookingResponse>
 {
-    public Task<Result<CreateBookingResponse>> HandleAsync(CreateBookingCommand command, CancellationToken ct)
+    public async Task<Result<CreateBookingResponse>> HandleAsync(CreateBookingCommand command, CancellationToken ct)
     {
         // 404 before any validation (contract).
-        var room = rooms.Get(command.RoomId);
+        var room = await rooms.GetByIdAsync(command.RoomId, ct);
         if (room is null)
-            return Task.FromResult<Result<CreateBookingResponse>>(
-                Error.NotFound("Room.NotFound", "The room does not exist."));
+            return Error.NotFound("Room.NotFound", "The room does not exist.");
+
+        var roomBookings = await bookings.GetActiveForRoomAsync(room.Id, ct);
 
         var created = Booking.Create(
             room,
@@ -35,15 +37,15 @@ public sealed class CreateBookingHandler(
             command.EndUtc,
             command.Attendees,
             timeProvider.GetUtcNow().UtcDateTime,
-            bookings.ListForRoom(room.Id));
+            roomBookings);
 
         if (created.IsFailure)
-            return Task.FromResult(Result<CreateBookingResponse>.Failure(created.Error));
+            return created.Error;
 
         var booking = created.Value;
-        bookings.Add(booking);
+        await bookings.AddAsync(booking, ct);
+        await unitOfWork.SaveChangesAsync(ct);
 
-        return Task.FromResult<Result<CreateBookingResponse>>(
-            new CreateBookingResponse(booking.Id, booking.RoomId, booking.Status.ToString()));
+        return new CreateBookingResponse(booking.Id, booking.RoomId, booking.Status.ToString());
     }
 }
